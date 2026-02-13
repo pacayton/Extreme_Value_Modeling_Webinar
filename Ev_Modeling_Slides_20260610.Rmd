@@ -1,0 +1,764 @@
+---
+title: "Extreme Value Modeling with Applications in Finance"
+author: "Peter Julian Cayton"
+date: "2026-06-10"
+output: beamer_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+## Preamble Code
+
+## packages to use
+
+## install.packages(c("tidyverse", "xts", "qrmtools", "rugarch", "knitr", "kableExtra", "moments", "stargazer"))
+
+library(tidyverse)
+library(xts)
+library(qrmtools)
+library(rugarch)
+library(knitr)
+library(kableExtra)
+library(moments)
+library(stargazer)
+
+
+## get data from github
+
+psei <- read_csv("https://github.com/pacayton/Extreme_Value_Modeling_Webinar/raw/main/PSEI.PS_AdjClose.csv")
+
+usd_eur <- read_csv("https://github.com/pacayton/Extreme_Value_Modeling_Webinar/raw/main/PESO_USD_EUR_0618.csv")
+
+## data conversion to xts object
+psei_p <- xts(psei$PSEI, psei$Date)
+usd_p <- xts(usd_eur$USD, usd_eur$Date)
+eur_p <- xts(usd_eur$EUR, usd_eur$Date)
+
+## data cleaning of NAs
+
+psei_p <- psei_p[!is.na(psei_p)]
+usd_p <- usd_p[!is.na(usd_p)]
+eur_p <- eur_p[!is.na(eur_p)]
+
+## log returns
+
+psei_r <- diff(log(psei_p))*100
+usd_r <- diff(log(usd_p))*100
+eur_r <- diff(log(eur_p))*100
+
+### generate basic stats
+stat_vec <- function(x) {
+  v <-as.numeric(x)
+  vec <- c(mean(v, na.rm = TRUE), sd(v, na.rm = TRUE), skewness(v, na.rm = TRUE), kurtosis(v, na.rm = TRUE))
+  return(vec)
+}
+
+
+```
+
+## Flow of Presentation
+
+1.  Motivation for Extreme Value Theory in Finance
+- Quantitative Financial Risk Management
+- Stylized Facts in Financial Time Series
+- Quantitative Risk Measures
+
+2.  Extreme Value Theorems
+- Fisher-Tippett-Gnedenko Theorem
+- Pickands-Balkema-de Haan Theorem
+
+3. Extreme Value Approaches in Finance
+- Block Maxima Approach
+- Peaks-over-Thresholds (POT) Approach
+
+4. Demonstration of Analytics Workflow
+
+5. References
+
+## Source Slides
+
+Slides and data are available online at Github:
+
+https://github.com/pacayton/Extreme_Value_Modeling_Webinar
+
+## 1. Motivation for Extreme Value Theory in Finance
+
+- Quantitative Financial Risk Management
+- Stylized Facts in Financial Time Series
+- Quantitative Risk Measures
+
+## Quantitative Financial Risk Management (McNeil, et al. 2015)
+
+1) Credit Risk = risk of default from a portfolio of debt-based assets, e.g., personal loans, business loans, credit card loans.
+
+2) Market Risk = risk from the sudden changes in value or price of held assets bought and sold from financial markets, e.g., shares of stock, commodities, mutual funds.
+
+3) Operational Risks = risk of losses from the daily business not covered by market forces or debt, e.g., fire, litigation, theft, cybersecurity.
+
+4) Other forms of risk which may be loosely covered in one of the earlier three, e.g., liquidity risk, interest rate risk, counterparty risks.
+
+- we focus on market risk as time series analysis is dominant in this type as we look at the historical patterns of asset prices.
+
+## Quantitative Financial Risk Management (McNeil, et al. 2015)
+
+*Returns* are the percent of profit or loss from holding an asset in an investment portfolio.
+
+For a non-dividend-paying asset, the returns $r_t$ in holding an asset with price $P_t$ is equal to:
+$$r_t = \frac{P_t - P_{t-1}}{P_{t-1}} \times 100\% $$
+
+For a dividend-paying asset with dividend value $D_t$, :
+$$r_t = \frac{P_t - P_{t-1} + D_t}{P_{t-1}} \times 100\% $$
+
+Log returns of an asset:
+$$r_t =\left[ \ln(P_t) - \ln(P_{t-1}) \right] \times 100\%$$
+
+## Quantitative Financial Risk Management (McNeil, et al. 2015)
+
+*Loss* in financial risk management is simply defined as negative return, whichever return formula is used:
+
+$$L_t = -r_t $$
+
+## Stylized Facts in Financial Time Series (McNeil, et al. 2015)
+
+1) *Volatility Clustering* = Volatility of returns tend to vary over time with periods of high fluctuations occurring together followed by period of low fluctuations. Modeled with *Conditional Heteroscedasticity Models*. An example is the GJR GARCH(p,q) model below (Glosten, et al 1993)
+
+$$r_t = \mu_t + \epsilon_t \quad , \quad \epsilon_t = \sqrt{h_t} u_t \quad , \quad u_t \sim f(\mu = 0, \sigma = 1) $$
+
+$$h_t = \omega + \sum_{i=1}^{p} \left( \alpha_i \epsilon^2_{t-i} + \gamma_i \epsilon^2_{t-i}I(\epsilon_{t-i}<0) \right) + \sum_{j=1}^{q} \beta_j h_{t-j} $$
+
+## Stylized Facts in Financial Time Series (McNeil, et al. 2015)
+
+```{r, echo = FALSE, warnings = FALSE, message = FALSE }
+par(mfrow=c(2,1))
+plot(psei_r)
+plot(abs(psei_r))
+```
+
+## Stylized Facts in Financial Time Series (McNeil, et al. 2015)
+
+```{r, echo = FALSE, warnings = FALSE, message = FALSE }
+par(mfrow=c(2,1))
+plot(usd_r)
+plot(abs(usd_r))
+```
+
+## Stylized Facts in Financial Time Series (McNeil, et al. 2015)
+
+```{r, echo = FALSE, warnings = FALSE, message = FALSE }
+par(mfrow=c(2,1))
+plot(eur_r)
+plot(abs(eur_r))
+```
+
+## Stylized Facts in Financial Time Series (McNeil, et al. 2015)
+
+2) *Nonnormality* = the distribution of returns tend to not follow the normal/Gaussian distribution
+- *Heavy Tails* = the tails of the distribution of returns are thicker than the normal distribution. Detected by having a larger kurtosis than normal, $Kurtosis > 3$ or excess kurtosis $Kurtosis - 3 > 0$
+- *Negative Skewness* = tails on the negative side of the return distribution is longer, meaning very large losses are more likely than normally expected. Also known as the *leverage effect* as negative returns are more likely to simultaneously occur or to be followed by high volatility than positive returns.
+
+## Stylized Facts in Financial Time Series (McNeil, et al. 2015)
+
+```{r, echo = FALSE, warnings = FALSE, message = FALSE }
+stat_dat <- round(rbind(stat_vec(psei_r), stat_vec(usd_r), stat_vec(eur_r)), 6)
+
+colnames(stat_dat) <- c("Mean", "St. Dev.", "Skewness", "Kurt (normal = 3)")
+rownames(stat_dat) <- c("PSEI", "PHP/USD", "PHP/EUR")
+
+kable(stat_dat, format = "pipe")
+```
+
+
+- Notice that for currencies, the skewness is less pronounced and more likely symmetric because of some balance in the push and pull factors.
+
+- For the Philippine Stock Exchange Index, it is fairly representative of the stock return behavior having negative skewness.
+
+## Quantitative Risk Measures
+
+Measuring the amount of risk being borne is important for institutions to make financial decisions in terms of investment strategies that reduces risk. (McNeil, et al. 2015)
+
+It is also important for regulators in the financial markets, e.g., Bangko Sentral ng Pilipinas and the Insurance Commission, that financial institutions are able to maintain capital buffer while engaging in financially risky activities to avoid bankruptcy, insolvency, or financial trouble. (Bangko Sentral ng Pilipinas 2020)
+
+## Quantitative Risk Measures
+
+For a return with distribution function $F_t$ at time t and given coverage level $p$, 
+
+1) Value-at-Risk
+
+$$VaR_t (F_t, p) = F^{-1}_t (1-p)$$
+
+- basically, a quantile of the return distribution at time t.
+- commonly used as basis for market risk capital (Bangko Sentral ng Pilipinas 2020)
+- Disadvantage: not a coherent measure of risk (Dowd 2005), violating sub-additivity thus discouraging diversification, but is coherent when using elliptical distributions (e.g., normal, t)
+- common $p$: 0.95, 0.98, 0.99; the BSP promulgated $p =0.99$
+
+## Quantitative Risk Measures
+
+For a return with distribution function $F_t$ at time t and given coverage level $p$, 
+
+2) Expected Shortfall
+
+$$ES_t(F_t,p) = \frac{1}{1-p} \int_0^{1-p} VaR_t (F_t, 1-y) dy = \frac{1}{1-p} \int_0^{1-p} F_t^{-1} (y) dy $$
+
+Alternatively if $F$ is continuous,
+
+$$ ES_t(F_t,p) = E_{F_t} \left[r_t | r_t \le VaR_t(F_t,p) \right]$$
+
+- a coherent measure of risk
+- sometimes called *tail conditional expectation* if $F$ is continuous.
+
+## 2. Extreme Value Theorems
+
+- Fisher-Tippett-Gnedenko Theorem
+- Pickands-Balkema-de Haan Theorem
+
+## 2. Extreme Value Theorems
+
+Note:
+
+- We will talking about the asymptotic distribution of the maximum, which can be used for the minimum by the simple transform:
+
+$$\min\{ X_1,...,X_n \} = - \max \{ -X_1,...,-X_n \}  $$
+
+## 2. Extreme Value Theorems
+
+Recall:
+
+- In the theory of statistical inference, the distribution of a maximum $X_{(n)}$ from $X_1,..., X_n \sim iid. F(x)$ is:
+
+$$ F_{X_{(n)}} (x) = P \left(X_{(n)} \le x \right) = P(X_1 \le x,...,X_n \le x) = \left[F(x) \right]^n$$
+
+- if $n \rightarrow \infty$, the distribution of the maximum becomes trivial!
+
+- the idea in *extreme value theory* is to slow down the speed of going to infinity so that we can have a nontrivial distribution that describes the properties of the maximum!
+
+## Fisher-Tippett-Gnedenko Theorem (Fisher & Tippett 1928; Gnedenko 1943)
+
+*Generalized Extreme Value (GEV)  Distribution*
+
+As $n \rightarrow \infty$, $F_{X_{(n)}} \rightarrow F_{GEV}$ where 
+
+\begin{equation*}
+F_{GEV} (x | \mu, \sigma, \xi) = \left\{ 
+\begin{matrix}
+\exp \left\{ - \left[ 1 + \xi \left( \frac{x-\mu}{\sigma} \right) \right]^{-1/\xi} \right\} \quad , \quad \xi \ne 0  \\
+\exp \left\{ - \exp \left( - \frac{x-\mu}{\sigma} \right) \right\} \quad , \quad \xi = 0
+\end{matrix}
+\right.
+\end{equation*}
+
+
+- $\mu \in \mathbb{R}$ is the location parameter, not the mean
+- $\sigma > 0$ is the scale parameter
+- $\xi \in \mathbb{R}$ is the shape parameter, and dictates the support of the distribution.
+
+## Fisher-Tippett-Gnedenko Theorem (Fisher & Tippett 1928; Gnedenko 1943)
+
+*Generalized Extreme Value (GEV)  Distribution*
+
+As $n \rightarrow \infty$, $F_{X_{(n)}} \rightarrow F_{GEV}$ where 
+
+\begin{equation*}
+F_{GEV} (x | \mu, \sigma, \xi) = \left\{ 
+\begin{matrix}
+\exp \left\{ - \left[ 1 + \xi \left( \frac{x-\mu}{\sigma} \right) \right]^{-1/\xi} \right\} \quad , \quad \xi \ne 0  \\
+\exp \left\{ - \exp \left( - \frac{x-\mu}{\sigma} \right) \right\} \quad , \quad \xi = 0
+\end{matrix}
+\right.
+\end{equation*}
+
+- Frechet Extreme Value (EV): $\xi > 0$  and support is $x \in \left[\mu - \frac{\sigma}{\xi}, \infty \right)$
+- Gumbel EV: $\xi = 0$  and support is $x \in \left( -\infty, \infty \right)$
+- Weibull EV: $\xi < 0$ and support is $x \in \left( -\infty, \mu - \frac{\sigma}{\xi} \right]$
+
+## Fisher-Tippett-Gnedenko Theorem (Fisher & Tippett 1928; Gnedenko 1943)
+
+Example density plots for the $GEV(\mu = 0, \sigma = 1, \xi \in \{-0.5, 0, 0.5\} )$
+
+```{r, echo = FALSE, warnings = FALSE, message = FALSE }
+# set of values
+x <- seq(from = -3, to = 3, by = 0.05 )
+
+# dgev
+
+dgevneg1 <- dGEV(x, shape = -0.5)
+dgevzero <- dGEV(x, shape = 0)
+dgevpos1 <- dGEV(x, shape = 0.5)
+
+ymax <- max(c(dgevneg1, dgevzero, dgevpos1), na.rm = TRUE)
+
+plot(x, dgevneg1, ylim = c(0, ymax), type = "l", col = 1, ylab = "Density")
+lines(x, dgevzero, col = 2 )
+lines(x, dgevpos1, col = 3 )
+legend(x = 1.8, y = 0.4, legend = c("xi = -0.5", "xi = 0", "xi = 0.5"), col = 1:3, lty = 1)
+
+```
+
+
+## Fisher-Tippett-Gnedenko Theorem (Fisher & Tippett 1928; Gnedenko 1943)
+
+Comment:
+
+The kind of asymptotic EV distribution the maximum of a random sample will have depends on the tail feature of the population density:
+
+1) heavy-tailed densities tend to fall into the Frechet EV,
+2) densities with exponentially-decaying tails, e.g., normal, tend to follow Gumbel EV,
+3) thin-tailed or platykurtic densities, e.g., uniform, tend to have Weibull tails.
+
+## Fisher-Tippett-Gnedenko Theorem (Fisher & Tippett 1928; Gnedenko 1943)
+
+If $L \sim GEV(\mu, \sigma, \xi)$
+
+Upper $p$ Quantile of the GEV:
+
+\begin{equation*}
+F^{-1}(1-p) = \left\{ 
+\begin{matrix}
+\mu + \frac{\sigma}{\xi} \left\{ \left[ - \ln (1-p) \right]^{-\xi} -1 \right\} \quad , \quad \xi \ne 0 \\
+\mu - \sigma \ln \left[ - \ln (1-p) \right] \quad , \quad \xi = 0
+\end{matrix}
+\right.
+\end{equation*}
+
+Upper tail expected shortfall from the loss distribution $ES^{Loss}(F,p) = E \left[L | L > F^{-1}(1-p) \right]$:
+
+\begin{equation*}
+ES^{Loss}(F,p) = \left\{ 
+\begin{matrix}
+\mu + \frac{\sigma}{\xi (1-p)} \left[  \Gamma_l \left( 1-\xi, -\ln(p) \right) - (1-p) \right]  \quad , \quad \xi \ne 0 \\
+\mu - \frac{\sigma}{(1-p)} \left\{  \gamma_{EM} + p \ln \left[ - \ln (p) \right] - li (p) \right\} \quad , \quad \xi = 0
+\end{matrix}
+\right.
+\end{equation*}
+
+where $\Gamma_l (a,b) = \int_0^b x^{a-1} e^{-x} dx$, $li(x) = \int_0^a (\ln x)^{-1} dx$, and $\gamma_{EM} = 0.5772...$ is the Euler-Mascheroni constant.
+
+## Pickands-Balkema-de Haan Theorem (Pickands 1975; Balkema & de Haan 1974)
+
+We are interested in the structure of the *tails* of the distribution.
+
+For a rv. $X \sim F$, let us define the *conditional excess distribution*:
+
+$$F_{[u]}(y) = P(X-u \le y |X > u) = \frac{F(u+y)-F(u)}{1-F(u)}$$
+
+As $u \rightarrow \infty$, the distribution becomes trivial, but we will slow down the speed of convergence to have a workable distribution
+
+## Pickands-Balkema-de Haan Theorem (Pickands 1975; Balkema & de Haan 1974)
+
+*Generalized Pareto Distribution*
+
+As $u \rightarrow \infty$, then $F_{[u]} \rightarrow F_{GPD}$, where
+
+\begin{equation*}
+F_{GPD} (y | \sigma, \xi ) = \left\{
+\begin{matrix}
+1 - \left[ 1 + \frac{\xi}{\sigma} y \right]^{-1/\xi} \quad , \quad \xi \ne 0   \\
+1 - \exp \left\{ - \frac{y}{\sigma} \right\} \quad , \quad \xi = 0
+\end{matrix}
+\right.
+\end{equation*}
+
+Alternatively, if the threshold $u$ is included into the GPD specification,
+
+\begin{equation*}
+F_{GPD} (y | u, \sigma, \xi ) = \left\{
+\begin{matrix}
+1 - \left[ 1 + \frac{\xi}{\sigma} (y-u) \right]^{-1/\xi} \quad , \quad \xi \ne 0   \\
+1 - \exp \left\{ - \frac{y - u}{\sigma} \right\} \quad , \quad \xi = 0
+\end{matrix}
+\right.
+\end{equation*}
+
+## Pickands-Balkema-de Haan Theorem (Pickands 1975; Balkema & de Haan 1974)
+
+Comments:
+
+1) Parameter ranges:
+- $\sigma > 0$ is the scale parameter
+- $\xi \in \mathbb{R}$ is the shape parameter
+
+2) Support:
+- For $\xi \ge 0$, $x \in [u , \infty)$
+- For $\xi < 0$, $x \in [u , u - \sigma / \xi]$
+
+3) Special Cases:
+- $GPD(u = 0, \sigma, \xi = 1) \equiv Exp(\lambda = 1/ \sigma)$
+- $GPD(u = 0, \sigma, \xi = -1) \equiv U(0, \sigma)$
+- $GPD(u = \sigma/\xi, \sigma, \xi) \equiv Pareto(threshold = \sigma/\xi, power = 1/\xi)$
+
+## Pickands-Balkema-de Haan Theorem (Pickands 1975; Balkema & de Haan 1974)
+
+Example density plots for the $GPD(u = 0, \sigma = 1, \xi \in \{-1, 0, 1\} )$
+
+```{r, echo = FALSE, warnings = FALSE, message = FALSE }
+# set of values
+x <- seq(from = 0, to = 5, by = 0.05 )
+
+# dgpd
+
+dgpdneg1 <- dGPD(x, shape = -1, scale = 1)
+dgpdzero <- dGPD(x, shape = 0, scale = 1)
+dgpdpos1 <- dGPD(x, shape = 1, scale = 1)
+
+ymax <- max(c(dgpdneg1, dgpdzero, dgpdpos1), na.rm = TRUE)
+
+plot(x, dgpdneg1, ylim = c(0, ymax), type = "l", col = 1, ylab = "Density")
+lines(x, dgpdzero, col = 2 )
+lines(x, dgpdpos1, col = 3 )
+legend(x = 4, y = 1, legend = c("xi = -1", "xi = 0", "xi = 1"), col = 1:3, lty = 1)
+
+```
+
+## Pickands-Balkema-de Haan Theorem (Pickands 1975; Balkema & de Haan 1974)
+
+$L \sim GPD(u, \sigma, \xi)$
+
+Upper $p$ quantile:
+
+\begin{equation*}
+F^{-1}(1-p) = \left\{
+\begin{matrix}
+u + \frac{\sigma}{\xi} \left[ p^{-\xi}-1 \right] \quad , \quad \xi \ne 0 \\
+u - \sigma \ln (p) \quad , \quad \xi = 0
+\end{matrix}
+\right.
+\end{equation*}
+
+Upper tail expected shortfall from the loss distribution $ES^{Loss}(F,p) = E \left[L | L > F^{-1}(1-p) \right]$:
+
+$$ES^{Loss}(F,p) = F^{-1}(1-p) + \sigma \frac{p^{-\xi}}{1-\xi} $$
+
+Note:
+
+- For *peaks-over-thresholds* later, we apply corrections to the quantiles and ES to reflect exceedance proportions.
+
+## 3. Extreme Value Approaches in Finance
+
+- Block Maxima Approach
+- Peaks-over-Thresholds (POT) Approach
+
+## Block Maxima Approach (McNeil, et al. 2015; Tsay 2010; Coles 2001)
+
+- This approach is done by dividing the loss time series into non-overlapping blocks and getting the maximum from each block to be used for fitting the data to the GEV distribution
+- Typical block groupings would be by weeks each having 5 observations or by months with each typically having about 20 observations
+
+## Block Maxima Approach (McNeil, et al. 2015; Tsay 2010; Coles 2001)
+
+Procedure:
+
+Given a loss time series $\left\{ L_1, L_2,..., L_T \right\}$,
+
+1) Divide the data into $B$ blocks of size $n$: $\left\{ \left\{ L_{1,1},..., L_{1,n} \right\},..., \left\{ L_{B,1},..., L_{B,n} \right\}  \right\}$
+2) Get the maximum value from each block to produce the block maxima data: $\underline{L}_{(n)} = \left\{ L_{1,(n)}, ..., L_{B,(n)}  \right\}$
+
+## Block Maxima Approach (McNeil, et al. 2015; Tsay 2010; Coles 2001)
+
+3) Estimate the parameters of the GEV distribution using your algorithm of choice:
+
+$$\left( \hat{\mu}, \hat{\sigma}, \hat{\xi} \right) = \left( \hat{\mu}(\underline{L}_{(n)}), \hat{\sigma}(\underline{L}_{(n)}), \hat{\xi}(\underline{L}_{(n)}) \right) $$
+
+Examples:
+
+- Maximum Likelihood Estimation
+- L-moments/Probability-Weighted Moments Approach
+- Quantile Matching
+
+## Block Maxima Approach (McNeil, et al. 2015; Tsay 2010; Coles 2001)
+
+4) Solve for the risk measure values based on the parameters
+
+$$VaR = VaR^{Loss}(F_{GEV}(x| \hat{\mu}, \hat{\sigma}, \hat{\xi}),p) = F_{GEV}^{-1}(p|\hat{\mu}, \hat{\sigma}, \hat{\xi}) $$
+
+$$ES = ES^{Loss}(F_{GEV}(x| \hat{\mu}, \hat{\sigma}, \hat{\xi}),p)  $$
+
+5) Conduct sufficient checks and regulatory requirements as needed
+
+## Block Maxima Approach (McNeil, et al. 2015; Tsay 2010; Coles 2001)
+
+Comment: 
+
+*Bias-Variance Trade-off on Block Size*
+
+- Smaller blocks mean more maxima data and smaller standard errors but may produce biased results as maxima of small blocks may not be truly represent maxima behavior.
+- Larger blocks means more appropriately behaved maxima data but fewer block maxima which may produce estimates that have large standard errors.
+
+## Peaks-over-Thresholds (POT) Approach (McNeil, et al. 2015; Tsay 2010; Coles 2001)
+
+- The data is filtered in which loss that exceed a threshold value $u$ are used in the model fitting.
+- An adjustment to the GPD is used that accounts for the proportion $\zeta_u = P(X>U)$ of exceedances or *peaks* over the threshold. Below is the survival function used for POT
+
+\begin{equation*}
+1-F_{POT}(x) = P(X> x) = \left\{
+\begin{matrix}
+\zeta_u \left[ 1 + \xi \left( \frac{x-u}{\sigma} \right) \right] \quad, \quad x > u \quad, \quad \xi \ne 0 \\
+\zeta_u \exp \left( \frac{x-u}{\sigma} \right)   \quad, \quad x > u \quad, \quad \xi = 0  
+\end{matrix}
+\right.
+\end{equation*}
+
+## Peaks-over-Thresholds (POT) Approach (McNeil, et al. 2015; Tsay 2010; Coles 2001)
+
+Upper $p$ Quantile for POT:
+
+\begin{equation*}
+F_{POT}^{-1}(1-p) = \left\{
+\begin{matrix}
+u + \frac{\sigma}{\xi} \left[ \left( \frac{1-p}{\zeta_u} \right)^{-\xi} - 1 \right] \quad, \quad \xi \ne 0 \\
+u - \sigma \ln \left( \frac{1-p}{\zeta_u} \right) \quad, \quad \xi = 0  
+\end{matrix}
+\right.
+\end{equation*}
+
+ES on Loss with respect to Upper $p$ quantile: 
+
+$$ES^{Loss}(F_{POT},p) = \frac{F_{POT}^{-1}(1-p)}{1-\xi} + \frac{\sigma - \xi u}{1-\xi}$$
+
+## Peaks-over-Thresholds (POT) Approach (McNeil, et al. 2015; Tsay 2010; Coles 2001)
+
+Procedure:
+
+Given a loss time series $\left\{ L_1, L_2,..., L_T \right\}$,
+
+1) Select a threshold $u$.
+
+Example:
+
+- via Mean Residual Life Plot
+- via Parameter Stability Plots
+- via the Hill Estimator Plots
+- User-based Choice
+
+2) Filter the data in which those that exceed the threshold $u$ are used and those that do not are deleted or ignored. Let the number of filtered data be $n_u$
+
+$$\underline{L}_{[u]} = \left\{ L_{1,[u]}, L_{2,[u]},..., L_{n_u,[u]} \right\}$$
+
+## Peaks-over-Thresholds (POT) Approach (McNeil, et al. 2015; Tsay 2010; Coles 2001)
+
+3) Estimate the parameters of the POT using your algorithm of choice:
+
+$$\left(\hat{\sigma}, \hat{\xi} \right) = \left(\hat{\sigma}(\underline{L}_{[u]}), \hat{\xi}(\underline{L}_{[u]}) \right) $$
+$$\hat{\zeta}_u = \frac{n_u}{T} $$
+
+Examples:
+
+- Maximum Likelihood Estimation
+- L-moments/Probability-Weighted Moments Approach
+- Method of Moments Estimation
+
+## Peaks-over-Thresholds (POT) Approach (McNeil, et al. 2015; Tsay 2010; Coles 2001)
+
+4) Solve for the risk measure values based on the parameters
+
+$$VaR = VaR^{Loss}(F_{POT}(x| u, \hat{\zeta}_u, \hat{\sigma}, \hat{\xi}),p) = F_{POT}^{-1}(p| u, \hat{\zeta}_u, \hat{\sigma}, \hat{\xi}) $$
+
+$$ES = ES^{Loss}(F_{POT}(x| u, \hat{\zeta}_u, \hat{\sigma}, \hat{\xi}),p)  $$
+
+5) Conduct sufficient checks and regulatory requirements as needed
+
+## Peaks-over-Thresholds (POT) Approach (McNeil, et al. 2015; Tsay 2010; Coles 2001)
+
+Comment: 
+
+*Bias-Variance Trade-off on Threshold Selection*
+
+- Smaller thresholds mean more tails data and smaller standard errors but may produce biased results as the peaks may not be truly represent tail behavior.
+- Larger threshold means more appropriately behaved tail data but fewer peaks which may produce estimates that have large standard errors.
+
+## 4. Demonstration of Analytics Workflow
+
+- Log-Returns Computation
+- Time Series Model to Extract Residuals
+- Fitting of the Peaks-over-Thresholds Model
+- Estimation of VaR and ES
+
+## 4. Demonstration of Analytics Workflow
+
+We use the methodology described in Suaiso & Mapa (2009), which includes a preliminary step of estimating ARMA-GARCH model and fitting the POT on the residuals
+
+The threshold is selected using Hill plots.
+
+## 4. Demonstration of Analytics Workflow
+
+Step 1: Solve log returns from the price data
+
+```{r, echo = TRUE, warnings = FALSE, message = FALSE }
+psei_r <- na.omit(diff(log(psei_p)))
+par(mfrow=c(2,1))
+plot(psei_r)
+```
+
+## 4. Demonstration of Analytics Workflow
+
+Step 2: Fit an ARMA-GARCH Model using Quasi-MLE, which is using the normal distribution with robust errors
+
+```{r, echo = TRUE, warnings = FALSE, message = FALSE }
+## Auto ARIMA selection
+arima_r <- forecast::auto.arima(psei_r)
+## order selected: ARMA(2,2) with non-zero mean
+
+## RUGARCH Steps
+## Specification Step: 
+## ARMA(2,2) with mean, GJR-GARCH(1,1), Normal QMLE
+garch_spec <- rugarch::ugarchspec(
+  variance.model = list(model = "gjrGARCH", 
+                        garchOrder = c(1,1)),
+  mean.model = list(armaOrder = c(2,2),
+                    include.mean = TRUE),
+  distribution.model = "norm")
+
+```
+
+## 4. Demonstration of Analytics Workflow
+
+Step 2: Fit an ARMA-GARCH Model using Quasi-MLE, which is using the normal distribution with robust errors
+
+```{r, echo = TRUE, warnings = FALSE, message = FALSE }
+## RUGARCH Steps
+## Fitting Step:
+garch_fit <- rugarch::ugarchfit(spec = garch_spec, 
+                       ## Our specification
+                       data = psei_r)
+par(mfrow=c(2,1))
+plot(sigma(garch_fit))
+```
+
+## 4. Demonstration of Analytics Workflow
+
+Step 3: Extract Negative Standardized Residuals from the ARMA-GARCH Model 
+
+```{r, echo = TRUE, warnings = FALSE, message = FALSE }
+nsresid_psei <- 
+  -(residuals(garch_fit) - fitted(garch_fit))/
+  sigma(garch_fit)
+par(mfrow=c(2,1))
+plot(nsresid_psei)
+```
+
+## 4. Demonstration of Analytics Workflow
+
+Step 4: Hill Plot on estimating $1/\xi$ for selecting the threshold 
+
+```{r, echo = TRUE, warnings = FALSE, message = FALSE, out.width="85%"}
+qrmtools::Hill_plot(x = as.numeric(nsresid_psei), 
+                    k = c(5, 500))
+```
+
+## 4. Demonstration of Analytics Workflow
+
+Step 4: Hill Plot on estimating $1/\xi$ for selecting the threshold for the negative residuals 
+
+In using Hill plots, the lower x-axis indicates how many of the largest values will be used for model fitting. Eyeballing the earlier plot, we will use the 150 largest values.
+
+Thus, $n_u = 150$, $\hat{\zeta}_u = 150/2881$, and $u = 1.691168$
+
+## 4. Demonstration of Analytics Workflow
+
+Step 5: Filter the data
+
+```{r, echo = TRUE, warnings = FALSE, message = FALSE}
+## Data turned numeric
+nsresid_num <- as.numeric(nsresid_psei)
+## threshold
+threshold <- sort(nsresid_num, decreasing=TRUE)[150]
+## filtered data
+data_gpd <- nsresid_num[nsresid_num >= threshold]
+## from the original nsresid
+par(mfrow=c(2,1))
+plot(nsresid_psei[nsresid_psei > threshold], type = "p")
+
+```
+
+## 4. Demonstration of Analytics Workflow
+
+Step 6: Fitting the GPD distribution from the peaks that exceed the threshold. Here, we will use probability weighted moments estimators.
+
+```{r, echo = TRUE, warnings = FALSE, message = FALSE}
+## Fit on "peaks - threshold" data
+(fit_PWM <- qrmtools::fit_GPD_PWM((data_gpd-threshold))) 
+
+```
+
+## 4. Demonstration of Analytics Workflow
+
+Step 7: Solve for the VaR and ES based on the Loss
+
+```{r, echo = TRUE, warnings = FALSE, message = FALSE}
+VaR <- qrmtools::VaR_GPDtail(level = 0.99, 
+                   threshold = threshold,
+                   p.exceed = 150/2881,
+                   shape = fit_PWM["shape"],
+                   scale = fit_PWM["scale"])
+names(VaR) <- "VaR"
+ES <- qrmtools::ES_GPDtail(level = 0.99, 
+                   threshold = threshold,
+                   p.exceed = 150/2881,
+                   shape = fit_PWM["shape"],
+                   scale = fit_PWM["scale"])
+names(ES) <- "ES"
+c(VaR, ES)
+```
+
+## 4. Demonstration of Analytics Workflow
+
+Step 8: Solve the VaR and ES for the whole return series using the ARMA-GARCH Model (Suaiso & Mapa 2009)
+
+$$VaR_t = \hat{\mu_t} - \sqrt{\hat{h_t}} \times VaR_{POT} $$
+$$ES_t = \hat{\mu_t} - \sqrt{\hat{h_t}} \times ES_{POT} $$
+
+## 4. Demonstration of Analytics Workflow
+
+Step 8: Solve the VaR and ES for the whole return series using the ARMA-GARCH Model (VaR shown below)
+
+```{r, echo = FALSE, warnings = FALSE, message = FALSE}
+VaR_psei <- fitted(garch_fit) - sigma(garch_fit)*VaR
+
+par(mfrow=c(2,1))
+plot(psei_r)
+lines(VaR_psei, col = 2)
+
+```
+
+## 4. Demonstration of Analytics Workflow
+
+Step 8: Solve the VaR and ES for the whole return series using the ARMA-GARCH Model (ES shown below)
+
+```{r, echo = FALSE, warnings = FALSE, message = FALSE}
+ES_psei <- fitted(garch_fit) - sigma(garch_fit)*ES
+
+par(mfrow=c(2,1))
+plot(psei_r)
+lines(ES_psei, col = 2)
+
+```
+
+## 5. References
+
+- Balkema AA & de Haan L (1974). Residual Life Time at Great Age. Ann. Probab. 2 (5) 792 - 804, October, 1974. https://doi.org/10.1214/aop/1176996548
+
+- Bangko Sentral ng Pilipinas (2020). Manual of Regulations for Banks. Bangko Sentral ng Pilipinas. https://www.bsp.gov.ph/Regulations/MORB/2020MORB.pdf.
+
+- Coles S (2001). An introduction to statistical modeling of extreme values. Springer.
+
+- Dowd K (2005). Measuring Market Risk. John Wiley & Sons.
+
+- Fisher RA & Tippett LHC (1928). Limiting forms of the frequency distribution of the largest and smallest member of a sample. Proc. Camb. Phil. Soc. 24 (2): 180–190.
+
+## 5. References
+
+- Glosten LR, Jagannathan R, & Runkle DE (1993) On the relation between the expected value and the volatility of the nominal excess return on stocks. Journal of Finance, 48(5):1779-1801, 1993.
+
+- Gnedenko BV (1943). Sur la distribution limite du terme maximum d'une serie aleatoire. Annals of Mathematics. 44 (3): 423–453.
+
+- McNeil AJ, Frey R, & Embrechts P (2015). Quantitative Risk Management: Concepts, Techniques, Tools. Princeton University Press.
+
+- Pickands  J III (1975). Statistical Inference Using Extreme Order Statistics. Ann. Statist. 3 (1) 119 - 131, January, 1975. https://doi.org/10.1214/aos/1176343003
+
+## 5. References
+
+- Suaiso JOQ & Mapa DS (2009). Measuring Market Risk Using Extreme Value Theory. Philippine Review of Economics, vol 46, issue 2, pp. 91-121.
+
+- Tsay RS (2010). Analysis of Financial Time Series, Third Edition. John Wiley & Sons.
+
+## Closing
+
+Thanks everyone! Stay safe always!
