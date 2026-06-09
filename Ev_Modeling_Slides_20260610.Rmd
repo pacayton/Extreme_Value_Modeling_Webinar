@@ -382,7 +382,7 @@ Comments:
 - For $\xi < 0$, $x \in [u , u - \sigma / \xi]$
 
 3) Special Cases:
-- $GPD(u = 0, \sigma, \xi = 1) \equiv Exp(\lambda = 1/ \sigma)$
+- $GPD(u = 0, \sigma, \xi = 0) \equiv Exp(\lambda = 1/ \sigma)$
 - $GPD(u = 0, \sigma, \xi = -1) \equiv U(0, \sigma)$
 - $GPD(u = \sigma/\xi, \sigma, \xi) \equiv Pareto(threshold = \sigma/\xi, power = 1/\xi)$
 
