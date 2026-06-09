@@ -1,6 +1,6 @@
 # Extreme Value Modeling Webinar Repository
 
-The repository contains publicly available files of the talk by Dr Peter Julian Cayton for the Webinar on Extreme Value Modeling,
+The repository contains publicly available files of the talk by Dr Peter Julian Cayton for the Webinar on Extreme Value Modeling with Applications in Finance.
 
 First webinar organized by the University of the Philippines Cebu Mathematics and Statistics Programs last May 2024.
 
